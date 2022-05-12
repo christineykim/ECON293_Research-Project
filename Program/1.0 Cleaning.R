@@ -28,8 +28,8 @@ for(pkg in list.of.packages){
 }
 
 ## File path 
-In_Data <- "/Users/chenyuej/Documents/GitHub/ECON293_Research-Project/Data/Intermediate/"
-Raw_Data <- "/Users/chenyuej/Documents/GitHub/ECON293_Research-Project/Data/Raw/"
+In_Data <- "/Users/chenyuej/Dropbox/Default Tips Project/Data/Intermediate/"
+Raw_Data <- "/Users/chenyuej/Dropbox/Default Tips Project/Data/Raw/"
 
 ## Today's date
 Today <- format(Sys.Date(), "%d%m%Y")
@@ -41,20 +41,29 @@ tips2009_clean <- read_dta(paste0(Raw_Data,"tips2009_clean.dta"))
 
 ## Subset the data according to the following rules:
 ## 1. Rides from the vendors only
-## 2. Fare between 5 and 25 dollars
+## 2. Fare between 1) 10 to 20 dollars 2) 12 to 18 dollars 
 
-tips2009_vendor <- tips2009_clean %>% filter(vendor == 1 & fare > 5 & fare < 25)
+tips2009_vendor_1020 <- tips2009_clean %>% filter(vendor == 1 & fare >= 10 & fare <= 20)
+tips2009_vendor_1218 <- tips2009_clean %>% filter(vendor == 1 & fare >= 12 & fare <= 18)
 
+# Step 2: Create additional categorical variables for the covariates -----
 
-tips2009_vendor <- read.csv(paste0(In_Data,"tips2009_vendor.csv"))
-write.csv(tips2009_vendor,paste0(In_Data,"tips2009_vendor.csv"))
+classify_cov <- function(data){
+  ## Categorize day of week 
+  data2 <- data %>% 
+    mutate(weekend = ifelse(pkp_dow >= 1 & pkp_dow <= 5, 0, 1))
+  ## Categorize time of the day 
+  data3 <- data2 %>%
+    mutate(pickup_time_group = ifelse(pkp_hour >= 6 & pkp_hour <= 12, 1,
+                                     ifelse(pkp_hour >= 13 & pkp_hour <= 16, 2, 
+                                            ifelse(pkp_hour >= 17 & pkp_hour <= 20, 3, 0))))
+  data_fnl <- data3
+  return(data_fnl)
+}
 
-## Validate the regression results
+tips2009_1020_regroup <- classify_cov(tips2009_vendor_1020)
+tips2009_1218_regroup <- classify_cov(tips2009_vendor_1218)
 
-fml1 <- lm(tip ~ dsc_15 + amt1_15, data = tips2009_vendor)
-
-## This one does not work - R aborted 
-lmr_out <- lm_robust(tip ~ dsc_15 + amt1_15, data = tips2009_vendor, fixed_effects = ~ driver_id)
-
-## Save the data 
-
+# Step 3: Save the data -----
+write.csv(tips2009_1020_regroup,paste0(In_Data,"fare_1020_recoded.csv"))
+write.csv(tips2009_1218_regroup,paste0(In_Data,"fare_1218_recoded.csv"))
