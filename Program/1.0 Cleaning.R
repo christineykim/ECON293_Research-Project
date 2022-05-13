@@ -57,7 +57,26 @@ classify_cov <- function(data){
     mutate(pickup_time_group = ifelse(pkp_hour >= 6 & pkp_hour <= 12, 1,
                                      ifelse(pkp_hour >= 13 & pkp_hour <= 16, 2, 
                                             ifelse(pkp_hour >= 17 & pkp_hour <= 20, 3, 0))))
-  data_fnl <- data3
+  ## Convert the pick up locations to numeric, because the causal forest package does not support 
+  ## non-numeric values 
+  data4 <- data3 %>%
+    mutate(Manhattan_pkp = ifelse(pkp_boro == "Manhattan", 1,0),
+           Brooklyn_pkp = ifelse(pkp_boro == "Brooklyn", 1,0),
+           Queens_pkp = ifelse(pkp_boro == "Queens", 1,0),
+           Bronx_pkp = ifelse(pkp_boro == "The Bronx", 1,0),
+           Staten_pkp = ifelse(pkp_boro == "Staten Island", 1,0),
+           Other_pkp = ifelse(pkp_boro == "", 1,0))
+  
+  ## Convert the drop off locations to numeric   
+  data5 <- data4 %>%
+    mutate(Manhattan_drf = ifelse(drf_boro == "Manhattan", 1,0),
+           Brooklyn_drf = ifelse(drf_boro == "Brooklyn", 1,0),
+           Queens_drf = ifelse(drf_boro == "Queens", 1,0),
+           Bronx_drf = ifelse(drf_boro == "The Bronx", 1,0),
+           Staten_drf = ifelse(drf_boro == "Staten Island", 1,0),
+           Other_drf = ifelse(drf_boro == "", 1,0))
+  
+  data_fnl <- data5
   return(data_fnl)
 }
 
