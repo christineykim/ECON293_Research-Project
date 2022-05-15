@@ -1,0 +1,91 @@
+---
+title: "optrdd"
+output: html_document
+author: ellamao
+date: '2022-05-12'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# OPTRDD
+
+```{r}
+# use e.g., install.packages("grf") to install any of the following packages.
+library(grf)
+library(rpart)
+library(glmnet)
+library(splines)
+library(MASS)
+library(lmtest)
+library(sandwich)
+library(ggplot2)
+
+#customized options
+library(causalTree)
+library('fastDummies')
+library(labelled)
+library(gtsummary)
+library(dplyr)
+library(devtools)
+library(magrittr) 
+
+# optrdd packages
+detach("package:optrdd", unload=TRUE)
+library(optrdd)
+
+install.packages("quadprog")
+library(quadprog)
+```
+
+```{r}
+# Read in data
+data <- read.csv(paste0("/Users/", Sys.info()[["user"]], "/Dropbox/Default Tips Project/Data/Intermediate/fare_1218_recoded.csv"))
+
+n = nrow(data)
+threshold = 15
+X = data$fare
+W = as.numeric(X >= threshold)
+Y = data$tip_zero
+
+```
+
+***\# need to figure out :***
+
+***1)optimizer***
+
+***2)try.elnet.for.sigma.sq***
+
+***3) fixed effect***
+
+***4) max.second.derivative***
+
+```{r}
+for (i in seq(0.1, 1, by = 0.1)){
+    # optrdd estimation
+    out.1 = optrdd(X=X, Y=Y, W=W, max.second.derivative = i, estimation.point = NULL, optimizer = "quadprog", try.elnet.for.sigma.sq = TRUE)
+    plot.gamma = plot(out.1,main = paste0("max.second.derivative = ", i))
+    
+    # store results
+    tau.hat = out.1$tau.hat
+    tau.hat.upperCI = out.1$tau.hat + out.1$tau.plusminus
+    tau.hat.lowerCI = out.1$tau.hat - out.1$tau.plusminus
+    est <- cbind(tau.hat,tau.hat.upperCI,tau.hat.lowerCI)
+    if (i == 0.1) {
+        est.matrix <- est
+    }
+    else{
+        est.matrix <- rbind(est.matrix,est)
+    }
+    #plot_list[[i]] = p
+}
+
+# if we want to produce one figure with various panels
+#par(mfrow=c(1,2))
+#plot(out.0.1,main = paste0("B = ", i))
+```
+
+```{r}
+est.matrix
+```
