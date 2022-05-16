@@ -37,9 +37,9 @@ Today <- format(Sys.Date(), "%d%m%Y")
 tips2009_1020 <- read.csv(paste0(In_Data,"fare_1020_recoded.csv"))
 tips2009_1218 <- read.csv(paste0(In_Data,"fare_1218_recoded.csv"))
 
-# Step 2: Applied X-learner to the 1020 data -----
-data <- tips2009_1020
-n <- nrow(tips2009_1020)
+# Step 2: Applied X-learner to the 1218 data -----
+data <- tips2009_1218
+n <- nrow(tips2009_1218)
 # Treatment: Whether the fare amount is above or below 15 dollars
 treatment <- "dsc_15"
 # Outcome: Whether someone tips 0. 1 for yes, 0 for no.
@@ -78,10 +78,19 @@ xf.preds.0 = predict(xf0, X_test)$predictions
 xf.preds.0[W_test==0] = predict(xf0,X_test[W_test==0,])$predictions
 propf = regression_forest(X_test, W_test)
 ehat = predict(propf)$predictions
+preds.xf = (1 - ehat) * xf.preds.1 + ehat * xf.preds.0
 
 ## Create a causal forest for plotting purposes.
 cf.priority = causal_forest(X_train, Y_train, W_train)
 priority.cate <- predict(cf.priority, X_test)$predictions
+## Estimate the causal forest on the test data
+cf.eval <- causal_forest(X_test, Y_test, W_test)
+
+## Plot QINI curve
+rate <- rank_average_treatment_effect(cf.eval, preds.xf, target = "QINI")
+png(file=paste0(Output, "X_Learner_QINI.png"),width=595, height=545)
+plot(rate)
+dev.off()
 
 # Show the CATE distribution 
 png(file=paste0(Output, "X_Learner_CATE.png"),width=595, height=545)
