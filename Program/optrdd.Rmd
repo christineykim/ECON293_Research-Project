@@ -50,7 +50,7 @@ if (user == "ellamao"){ ## Ella's path
   data <- read.csv("/Users/ellamao/Dropbox/Default Tips Project/Data/Intermediate/fare_1218_recoded.csv")
 }
 if (user == "51989"){ ## Bruno's PC path
-  data = read.csv(paste0("C:/Users/51989/OneDrive/Escritorio/Dropbox/Default Tips Project/Data/Intermediate/fare_1218_recoded.csv"))
+  data = read.csv(paste0("C:/Users/51989/OneDrive/Escritorio/Dropbox/Default Tips Project/Data/Intermediate/fare_1020_recoded.csv"))
 }
 
 n = nrow(data)
@@ -63,13 +63,13 @@ Y = data$tip_zero
 
 ## 2. Estimation
 
-Below we estimate the optimal RDD models for values of B between 0.025 and 0.3
+Below we estimate the optimal RDD models for values of B between 0.01 and 0.1. Any level of B below that will crash the estimation. This is problematic since our estimate of B from a quadratic fit is 0.003
 
 ```{r, message=FALSE, warning=FALSE}
 set.seed(1234)
-ind = (X<18 & X>12) # Keeping those with fare between 14 and 16
+ind = (X<20 & X>10) # Keeping those with fare between 14 and 16
 
-for (i in seq(0.025, 0.3, by = 0.025)){
+for (i in seq(0.01, 0.1, by = 0.01)){
     # optrdd estimation
     out = optrdd(X=X[ind], Y=Y[ind], W=W[ind], 
                    max.second.derivative = i, 
@@ -84,15 +84,13 @@ for (i in seq(0.025, 0.3, by = 0.025)){
     tau.ll = out$tau.hat - out$tau.plusminus
     b = i
     est <- cbind(tau.hat, tau.ul, tau.ll, b)
-    if (i == 0.025) {
+    if (i == 0.01) {
         est.matrix <- est
         gamma.df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind], b=i)
     }
     else{
-        if (i == 0.1 | i == 0.2 | i == 0.3){
-          df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind], b=i)
-          gamma.df = rbind(gamma.df,df)
-        }
+        df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind], b=i)
+        gamma.df = rbind(gamma.df,df)
         est.matrix <- rbind(est.matrix,est)
     }
     #plot_list[[i]] = p
@@ -109,7 +107,7 @@ We plot the estimates of gamma for last estimation (B = 0.3), together with the 
 # Plotting the gammas
 df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind])
 ggplot(df, aes(x=X,y=gamma, colour=b)) +
-  stat_summary_bin(fun='mean', bins=20,
+  stat_summary_bin(fun='mean', bins=15,
                    color='orange', size=2, geom='point') +
   ggtitle("Binscatter of gamma estimates")
 ```
@@ -122,7 +120,7 @@ ggplot(est.df, aes(x=b, y=tau.hat)) +
     geom_errorbar(aes(ymin=tau.ll, ymax=tau.ul), width=.01, position=pd) +
     geom_line(position=pd) +
     geom_point(position=pd) + geom_hline(yintercept = 0, colour="red") +
-    ggtitle("Estimated ATE by maximum second derivative (B)")
+    ggtitle("Estimated ATE by maximum second derivative (b)")
 ```
 
 ## 3. Questions for Stefan 
