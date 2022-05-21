@@ -1,7 +1,7 @@
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-##  Program: 2.0 X learner                                                   ##
+##  Program: 2.1 causal forest learner                                                   ##
 ##  Author:                                                                  ##
-##  Purpose: Run a x learner on the cleaned taxi tips data
+##  Purpose: Run a causal forest on the cleaned taxi tips data
 ##  Last Updated:                                                            ##
 ##  Notes:                                                                   ##
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -27,8 +27,8 @@ setwd("/Users/christinekim/Desktop/Courses/ECON 293/project")
 ## Change user file path 
 User <- "/Users/christinekim/"
 
-In_Data <- paste0(User,"/Users/christinekim/Dropbox/Default Tips Project/Data/Intermediate/")
-Output <-  paste0(User,"/Users/christinekim/Dropbox/Default Tips Project/Output/")
+In_Data <- paste0(User,"Dropbox/Default Tips Project/Data/Intermediate/")
+Output <-  paste0(User,"Dropbox/Default Tips Project/Output/")
 
 ## Today's date
 Today <- format(Sys.Date(), "%d%m%Y")
