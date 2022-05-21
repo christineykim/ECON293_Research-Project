@@ -27,8 +27,8 @@ setwd("/Users/christinekim/Desktop/Courses/ECON 293/project")
 ## Change user file path 
 User <- "/Users/christinekim/"
 
-In_Data <- paste0(User,"Dropbox/Default Tips Project/Data/Intermediate/")
-Output <-  paste0(User,"Dropbox/Default Tips Project/Output/")
+In_Data <- paste0(User,"/Users/christinekim/Dropbox/Default Tips Project/Data/Intermediate/")
+Output <-  paste0(User,"/Users/christinekim/Dropbox/Default Tips Project/Output/")
 
 ## Today's date
 Today <- format(Sys.Date(), "%d%m%Y")
@@ -76,6 +76,6 @@ cf_model = causal_forest(
 cf_predict = predict(cf_model, X_test)
 
 # Show the CATE distribution 
-png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
-hist(cf_predict$predictions, main = "Distribution of CATEs, X Learner", xlab = "CATE")
+#png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
+hist(cf_predict$predictions, main = "Distribution of CATEs, Causal Forest", xlab = "CATE", xlim=c(-0.06,0.06))
 dev.off()
