@@ -42,11 +42,11 @@ tips2009_1217 <- read.csv(paste0(In_Data,"fare_1217_recoded.csv"))
 ## This step may be deleted once the codes are finalized. The purpose of reducing the dataset 
 ## is to reduce the running time. 
 
-tips2009_1415 <- tips2009_1217 %>% filter(fare > 14 & fare < 16)
+# tips2009_1415 <- tips2009_1217 %>% filter(fare > 14 & fare < 16)
 
 # Step 2: Applied X-learner to the 1217 data -----
-data <- tips2009_1415
-n <- nrow(tips2009_1415)
+data <- tips2009_1217
+n <- nrow(tips2009_1217)
 # Treatment: Whether the fare amount is above or below 15 dollars
 treatment <- "dsc_15"
 # Outcome: Whether someone tips 0. 1 for yes, 0 for no.
@@ -127,10 +127,11 @@ CATE_test <- combined_data %>% group_by(tau.hat.quartiles) %>%
 ATE.df <- data.frame(ATE=double(),
                   SE=integer())
 
+## Create the calibration plot 
 for (i in 1:strata){
   temp_data <- combined_data %>% filter(tau.hat.quartiles == i)
   rd_lm <- temp_data %$%
-    lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15) + factor(pkp_hour) + factor(pkp_boro) + factor(drf_boro))
+    lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
   ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
   ATE.df[i,"SE"] <- summary(rd_lm)$coefficients[2,2]
 }
@@ -140,9 +141,47 @@ ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
 ## Combine the dataset
 ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 
-ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau Hat", y = "ATE")
+  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "Calibration Plot") 
 
+png(file=paste0(Output, "Calibration_by_quartile.png"),width=595, height=545)
 
+cali_plot
+
+## Create HTE plots by borough
+tau.hat <- preds.xf
+## Combine all the data together
+combined_data <- as.data.frame(cbind(data.test,tau.hat))
+## Store tau estimates by drop off borough
+CATE_test <- combined_data %>% group_by(drf_boro) %>%
+  summarise(tau.mean = mean(tau.hat,na.rm = TRUE),
+            tau.sd = sd(tau.hat,na.rm = TRUE))
+## Estimate ATE for each split 
+ATE.df <- data.frame(ATE=double(),
+                     SE=integer())
+## Create the calibration plot 
+strata <- length(unique(combined_data$drf_boro))
+
+for (i in 1:strata){
+  temp_data <- combined_data %>% filter(drf_boro == unique(combined_data$drf_boro)[i])
+  rd_lm <- temp_data %$%
+    lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
+  ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
+  ATE.df[i,"SE"] <- summary(rd_lm)$coefficients[2,2]
+}
+
+## CI
+ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
+## Combine the dataset
+ATE.df.fnl <- cbind(ATE.df2,CATE_test)
+
+cali_plot2 <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
+  geom_point() + 
+  geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
+  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "Calibration Plot") 
+
+png(file=paste0(Output, "HTE_by_drfbrough.png"),width=595, height=545)
+
+cali_plot2
