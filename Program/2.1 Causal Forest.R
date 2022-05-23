@@ -38,8 +38,8 @@ tips2009_1020 <- read.csv(paste0(In_Data,"fare_1020_recoded.csv"))
 tips2009_1218 <- read.csv(paste0(In_Data,"fare_1218_recoded.csv"))
 
 # Step 2: Applied X-learner to the 1020 data -----
-data <- tips2009_1020
-n <- nrow(tips2009_1020)
+data <- tips2009_1218
+n <- nrow(tips2009_1218)
 # Treatment: Whether the fare amount is above or below 15 dollars
 treatment <- "dsc_15"
 # Outcome: Whether someone tips 0. 1 for yes, 0 for no.
