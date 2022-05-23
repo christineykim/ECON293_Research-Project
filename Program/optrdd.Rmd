@@ -1,17 +1,19 @@
 ---
-title: "optrdd"
-output: html_document
-author: ellamao
-date: '2022-05-12'
+title: "Default Tips Part 1: Optimal RDD estimations"
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# OPTRDD
+## 1. Loading
 
-```{r}
+
+We use the `optrdd` package to estimate the the fare's discontinuity policy effect using convex optimization methods. Below are the packages used:
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
 # use e.g., install.packages("grf") to install any of the following packages.
 library(grf)
 library(rpart)
@@ -23,7 +25,7 @@ library(sandwich)
 library(ggplot2)
 
 #customized options
-library(causalTree)
+#library(causalTree)
 library('fastDummies')
 library(labelled)
 library(gtsummary)
@@ -31,17 +33,25 @@ library(dplyr)
 library(devtools)
 library(magrittr) 
 
-# optrdd packages
-detach("package:optrdd", unload=TRUE)
+# optrdd packages:
+#install_github("swager/optrdd") # Run this for installation of optrdd
 library(optrdd)
-
-install.packages("quadprog")
 library(quadprog)
 ```
 
+We load pre-cleaned data with fares between 12 and 18 US dollars; the threshold is 15 dollars.
+
 ```{r}
+# Clear the data environment
+rm(list = ls())
 # Read in data
-data <- read.csv(paste0("/Users/", Sys.info()[["user"]], "/Dropbox/Default Tips Project/Data/Intermediate/fare_1218_recoded.csv"))
+user = Sys.info()[["user"]]
+if (user == "ellamao"){ ## Ella's path 
+  data <- read.csv("/Users/ellamao/Dropbox/Default Tips Project/Data/Intermediate/fare_1218_recoded.csv")
+}
+if (user == "51989"){ ## Bruno's PC path
+  data = read.csv(paste0("C:/Users/51989/OneDrive/Escritorio/Dropbox/Default Tips Project/Data/Intermediate/fare_1020_recoded.csv"))
+}
 
 n = nrow(data)
 threshold = 15
@@ -51,31 +61,36 @@ Y = data$tip_zero
 
 ```
 
-***\# need to figure out :***
+## 2. Estimation
 
-***1)optimizer***
+Below we estimate the optimal RDD models for values of B between 0.01 and 0.1. Any level of B below that will crash the estimation. This is problematic since our estimate of B from a quadratic fit is 0.003
 
-***2)try.elnet.for.sigma.sq***
+```{r, message=FALSE, warning=FALSE}
+set.seed(1234)
+ind = (X<20 & X>10) # Keeping those with fare between 14 and 16
 
-***3) fixed effect***
-
-***4) max.second.derivative***
-
-```{r}
-for (i in seq(0.1, 1, by = 0.1)){
+for (i in seq(0.01, 0.1, by = 0.01)){
     # optrdd estimation
-    out.1 = optrdd(X=X, Y=Y, W=W, max.second.derivative = i, estimation.point = NULL, optimizer = "quadprog", try.elnet.for.sigma.sq = TRUE)
-    plot.gamma = plot(out.1,main = paste0("max.second.derivative = ", i))
+    out = optrdd(X=X[ind], Y=Y[ind], W=W[ind], 
+                   max.second.derivative = i, 
+                   estimation.point = NULL, 
+                   optimizer = "quadprog",
+                   try.elnet.for.sigma.sq = TRUE )
+    #plot.gamma = plot(out,main = paste0("max.second.derivative = ", i)) # Keeping this as comment since these plots are literally all the same....
     
     # store results
-    tau.hat = out.1$tau.hat
-    tau.hat.upperCI = out.1$tau.hat + out.1$tau.plusminus
-    tau.hat.lowerCI = out.1$tau.hat - out.1$tau.plusminus
-    est <- cbind(tau.hat,tau.hat.upperCI,tau.hat.lowerCI)
-    if (i == 0.1) {
+    tau.hat = out$tau.hat
+    tau.ul = out$tau.hat + out$tau.plusminus
+    tau.ll = out$tau.hat - out$tau.plusminus
+    b = i
+    est <- cbind(tau.hat, tau.ul, tau.ll, b)
+    if (i == 0.01) {
         est.matrix <- est
+        gamma.df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind], b=i)
     }
     else{
+        df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind], b=i)
+        gamma.df = rbind(gamma.df,df)
         est.matrix <- rbind(est.matrix,est)
     }
     #plot_list[[i]] = p
@@ -86,6 +101,36 @@ for (i in seq(0.1, 1, by = 0.1)){
 #plot(out.0.1,main = paste0("B = ", i))
 ```
 
-```{r}
-est.matrix
+We plot the estimates of gamma for last estimation (B = 0.3), together with the estimates of all the tau estimates and their 95% confidence intervals.
+
+```{r, echo=FALSE}
+# Plotting the gammas
+df = data.frame(gamma=out$gamma, X=X[ind], Y=Y[ind])
+ggplot(df, aes(x=X,y=gamma, colour=b)) +
+  stat_summary_bin(fun='mean', bins=15,
+                   color='orange', size=2, geom='point') +
+  ggtitle("Binscatter of gamma estimates")
 ```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+# Plotting the estimated tau hats
+est.df = as.data.frame(est.matrix)
+pd = position_dodge(0.1)
+ggplot(est.df, aes(x=b, y=tau.hat)) + 
+    geom_errorbar(aes(ymin=tau.ll, ymax=tau.ul), width=.01, position=pd) +
+    geom_line(position=pd) +
+    geom_point(position=pd) + geom_hline(yintercept = 0, colour="red") +
+    ggtitle("Estimated ATE by maximum second derivative (b)")
+```
+
+## 3. Questions for Stefan 
+
+1) Is it OK if we only use the `quadprog` optimizer?
+
+2) Why do we need `try.elnet.for.sigma.sq = TRUE`?
+
+3) The paper's main specification uses multiple fixed effects. Does `optrdd` need this FE for correct identification?
+
+4.1) How should we sensibly set `max.second.derivative`?
+
+4.2) Why are we getting same tau.hat across B? We have noticed this does not happen when we use smaller random samples.
