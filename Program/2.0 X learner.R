@@ -19,7 +19,7 @@ set.seed(1234)
 ## devtools::install_github('susanathey/causalTree') 
 library(causalTree)
 
-list.of.packages <- c("tidyverse","dplyr","fastDummies","gtsummary","labelled","lmtest","sandwich","grf","glmnet","sandwich","splines","ggplot2","ggpubr","data.table","qwraps2","rpart","MASS","pracma","haven","estimatr","magrittr")
+list.of.packages <- c("tidyverse","dplyr","fastDummies","gtsummary","labelled","lmtest","plotrix","sandwich","grf","glmnet","sandwich","splines","ggplot2","ggpubr","data.table","qwraps2","rpart","MASS","pracma","haven","estimatr","magrittr")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 
@@ -42,11 +42,11 @@ tips2009_1217 <- read.csv(paste0(In_Data,"fare_1217_recoded.csv"))
 ## This step may be deleted once the codes are finalized. The purpose of reducing the dataset 
 ## is to reduce the running time. 
 
-# tips2009_1415 <- tips2009_1217 %>% filter(fare > 14 & fare < 16)
+tips2009_1415 <- tips2009_1217 %>% filter(fare > 14 & fare < 16)
 
 # Step 2: Applied X-learner to the 1217 data -----
-data <- tips2009_1217
-n <- nrow(tips2009_1217)
+data <- tips2009_1415
+n <- nrow(tips2009_1415)
 # Treatment: Whether the fare amount is above or below 15 dollars
 treatment <- "dsc_15"
 # Outcome: Whether someone tips 0. 1 for yes, 0 for no.
@@ -144,44 +144,108 @@ ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "Calibration Plot") 
+  theme_light() + labs(x = "Tau Hat", y = "ATE") + 
+  theme(axis.text.x = element_text(face="bold",
+                                   size=12),
+        axis.text.y = element_text(face="bold", 
+                                   size=12),
+        axis.title=element_text(size=16,face="bold"))
 
-png(file=paste0(Output, "Calibration_by_quartile.png"),width=595, height=545)
+ggsave(file=paste0(Output, "Calibration_by_quartile.png"), plot = cali_plot)
 
-cali_plot
+# Step 5: Create HTE plots by weekend -----
 
-## Create HTE plots by borough
-tau.hat <- preds.xf
+HTE_plot <- function(tau.hat,data.test,factor, factor_label){
 ## Combine all the data together
 combined_data <- as.data.frame(cbind(data.test,tau.hat))
 ## Store tau estimates by drop off borough
-CATE_test <- combined_data %>% group_by(drf_boro) %>%
+CATE_test <- combined_data %>% group_by(get(factor)) %>%
   summarise(tau.mean = mean(tau.hat,na.rm = TRUE),
             tau.sd = sd(tau.hat,na.rm = TRUE))
 ## Estimate ATE for each split 
 ATE.df <- data.frame(ATE=double(),
-                     SE=integer())
-## Create the calibration plot 
-strata <- length(unique(combined_data$drf_boro))
+                     SE=integer(),
+                     strata = integer(),
+                     method = c())
+## Estimate Causal Forest for each split 
+CausalF.df <- data.frame(ATE=double(),
+                     SE=integer(),
+                     strata = integer(),
+                     method = c())
+## Estimate X learner for each split 
+Xlearner.df <- data.frame(ATE=double(),
+                         SE=integer(),
+                         strata = integer(),
+                         method = c())
 
+## Create the calibration plot 
+column_of_interest <- combined_data[,colnames(combined_data) == factor]
+strata <- length(unique(column_of_interest))
+
+## Store tau hats from each method for plotting purposes
 for (i in 1:strata){
-  temp_data <- combined_data %>% filter(drf_boro == unique(combined_data$drf_boro)[i])
+  temp_data <- combined_data %>% filter(get(factor) == sort(unique(column_of_interest))[i])
+  ## RD
   rd_lm <- temp_data %$%
     lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
   ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
-  ATE.df[i,"SE"] <- summary(rd_lm)$coefficients[2,2]
+  ATE.df[i,"SE"] <- coeftest(rd_lm, vcov=vcovHC(rd_lm, "HC2"))[2,2]
+  ATE.df[i,"strata"] <- i 
+  ATE.df[i,"method"] <- "Regression Discontinuity"
+  ## Causal Forest
+  forest <- causal_forest(X=temp_data[,covariates],W=temp_data[,treatment],Y=temp_data[,outcome],num.trees = 100)
+  forest.ate <- average_treatment_effect(forest)
+  CausalF.df[i,"ATE"] <- forest.ate[1]
+  CausalF.df[i,"SE"] <- forest.ate[2]
+  CausalF.df[i,"strata"] <- i 
+  CausalF.df[i,"method"] <- "Causal Forest"
+  ## X learner
+  Xlearner.df[i,"ATE"] <- mean(tau.hat)
+  Xlearner.df[i,"SE"] <- std_err(tau.hat)
+  Xlearner.df[i,"strata"] <- i
+  Xlearner.df[i,"method"] <- "X Learner"
 }
 
-## CI
-ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
-## Combine the dataset
-ATE.df.fnl <- cbind(ATE.df2,CATE_test)
+## Combine the tau hats from all methods 
+res <- rbind(ATE.df, CausalF.df)
 
-cali_plot2 <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
-  geom_point() + 
-  geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "Calibration Plot") 
+## Recode values in strata
+for (i in 1:strata){
+  res$strata[res$strata == i] <- factor_label[i]
+}
 
-png(file=paste0(Output, "HTE_by_drfbrough.png"),width=595, height=545)
+calibration_plot <- ggplot(res) +
+  aes(x = strata, y = ATE, group=method, color=method) + 
+  geom_point(position=position_dodge(0.2)) +
+  geom_errorbar(aes(ymin=ATE-2*SE , ymax=ATE+2*SE), width=.2, position=position_dodge(0.2)) +
+  ylab("") + xlab("") +
+  ggtitle("Average CATE within each ranking (as defined by predicted CATE)") +
+  theme_light() +
+  theme(legend.position="bottom", legend.title = element_blank())
 
-cali_plot2
+return(calibration_plot)
+}
+
+## Generate plots 
+sort(unique(data.test.drfboro$weekend))
+plot_weekend <- HTE_plot(tau.hat,data.test,factor = "weekend", factor_label = c("Weekday", "Weekend"))
+ggsave(file=paste0(Output, "HTE_by_weekend.png"), plot = plot_weekend)
+
+sort(unique(data.test.drfboro$pickup_time_group))
+plot_TimeofDay <- HTE_plot(tau.hat,data.test,factor = "pickup_time_group", factor_label = c('Morning', 'Afternoon', 'Night'))
+ggsave(file=paste0(Output, "HTE_by_timeofday.png"), plot = plot_TimeofDay)
+
+data.test.noNA <- data.test %>% filter(!is.na(gr_inc10_All))
+tau.hat2 <- tau.hat[!is.na(data.test$gr_inc10_All)]
+
+sort(unique(data.test.drfboro$gr_inc10_All))
+plot_Income <- HTE_plot(tau.hat2,data.test.noNA,factor = "gr_inc10_All", factor_label = c("1","2","3","4","5","6","7","8","9","10"))
+ggsave(file=paste0(Output, "HTE_by_income.png"), plot = plot_Income)
+
+data.test.drfboro <- data.test %>% filter(drf_boro != "")
+tau.hat.drfboro <- tau.hat[data.test$drf_boro != ""]
+
+sort(unique(data.test.drfboro$drf_boro))
+plot_drfboro <- HTE_plot(tau.hat = tau.hat.drfboro,data.test = data.test.drfboro,factor = "drf_boro", factor_label = c("Brooklyn", "Manhattan", "Queens", "Staten Island", "The Bronx"))
+ggsave(file=paste0(Output, "HTE_by_dropoff.png"), plot = plot_drfboro)
+
