@@ -74,8 +74,17 @@ cf_model = causal_forest(
 
 # Estimate treatment effects on test data
 cf_predict = predict(cf_model, X_test)
+## Estimate the causal forest on the test data
+cf.eval <- causal_forest(X_test, Y_test, W_test)
 
 # Show the CATE distribution 
-#png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
+png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
 hist(cf_predict$predictions, main = "Distribution of CATEs, Causal Forest", xlab = "CATE", xlim=c(-0.06,0.06))
+dev.off()
+
+## Plot QINI curve - using rank_average_treatment_effect
+rate <- rank_average_treatment_effect(cf.eval, cf_predict, target = "QINI")
+png(file=paste0(Output, "Causal_Forest_QINI.png"),width=595, height=545)
+plot(rate)
+print(rate)
 dev.off()
