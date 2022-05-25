@@ -109,7 +109,7 @@ dev.off()
 
 # Show the CATE distribution 
 png(file=paste0(Output, "X_Learner_CATE.png"),width=595, height=545)
-hist(ehat, main = "Distribution of CATEs, X Learner", xlab = "CATE")
+hist(ehat, main = "", xlab = "CATE")
 dev.off()
 
 ## Create quartile plots

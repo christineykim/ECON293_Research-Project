@@ -127,7 +127,7 @@ ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "Calibration Plot") 
+  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "") 
 
 png(file=paste0(Output, "Calibration_by_quartile_Causal_Forest.png"),width=595, height=545)
 cali_plot

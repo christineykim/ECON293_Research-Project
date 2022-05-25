@@ -102,7 +102,7 @@ dev.off()
 
 ## 4.2. CATE distribution ----
 png(file=paste0(Output, "LM_forest_CATE.png"),width=595, height=545)
-hist(tau.hat, main = "Distribution of CATEs, LM forest", xlab = "CATE")
+hist(tau.hat, main = "", xlab = "CATE")
 dev.off()
 
 ##4.3. Create quantile plots ----
