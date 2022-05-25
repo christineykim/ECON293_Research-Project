@@ -140,12 +140,12 @@ ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
 ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 
 ## GGplot
-cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau hat", y = "ATE", title = "Calibration Plot") 
+  theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
 
-png(file=paste0(Output, "Calibration_by_quartile_LM_forest.png"),width=595, height=545)
+ggsave(file=paste0(Output,"Calibration_by_quartile_LM_forest.png"),plot = cali_plot)
 
 cali_plot
 
