@@ -39,8 +39,15 @@ Today <- format(Sys.Date(), "%d%m%Y")
 
 # Step 1: Import the data -----
 tips2009_1218 <- read.csv(paste0(In_Data,"fare_1218_recoded.csv"))
+reduced=0
+if (reduced == 1){
 data = subset(tips2009_1218, fare>=14 & fare<=16)
-
+suffix = "r1"
+}
+if (reduced == 0){
+  data = subset(tips2009_1218, fare>=12 & fare<=18)
+suffix = "r0"  
+}
 # Step 2: Applied LM-forest to the 1416 data -----
 n <- nrow(data)
 # Treatment: Whether the fare amount is above or below 15 dollars
@@ -80,7 +87,7 @@ tau.hat <- predict(lmf,X_test)$predictions[, 1, ]
 lm.ATE.mean <- mean(tau.hat)
 lm.ATE.SD <- sd(tau.hat)
 ATE_stats <- c(lm.ATE.mean,lm.ATE.SD)
-write.csv(ATE_stats,paste0(Output, "LM_forest_sumstats.csv"),row.names=F)
+write.csv(ATE_stats,paste0(Output, "LM_forest_sumstats_", suffix,".csv"),row.names=F)
 
 # Step 4: Generate the diagnostic plots -----
 
@@ -95,13 +102,13 @@ cf.eval <- causal_forest(X_test, Y_test, W_test)
 
 ## Plot QINI curve - using rank_average_treatment_effect
 rate <- rank_average_treatment_effect(cf.eval, tau.hat, target = "QINI")
-png(file=paste0(Output, "LM_forest_QINI.png"),width=595, height=545)
+png(file=paste0(Output, "LM_forest_QINI_", suffix,".png"),width=595, height=545)
 plot(rate)
 print(rate)
 dev.off()
 
 ## 4.2. CATE distribution ----
-png(file=paste0(Output, "LM_forest_CATE.png"),width=595, height=545)
+png(file=paste0(Output, "LM_forest_CATE_", suffix,".png"),width=595, height=545)
 hist(tau.hat, main = "", xlab = "CATE")
 dev.off()
 
@@ -145,8 +152,104 @@ cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
   theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
 
-ggsave(file=paste0(Output,"Calibration_by_quartile_LM_forest.png"),plot = cali_plot)
-
+ggsave(file=paste0(Output,"Calibration_by_quartile_LM_forest_", suffix,".png"),plot = cali_plot)
+dev.off()
 cali_plot
 
 # NOTE: The workspace with all data and estimations up to this point are stored in Output\lm_forest\lm_f_workspace_bruno
+
+# Step 5: Create HTE plots by categoircal variables ----
+
+HTE_plot <- function(tau.hat,data.test,factor, factor_label){
+  ## Combine all the data together
+  combined_data <- as.data.frame(cbind(data.test,tau.hat))
+  ## Store tau estimates by drop off borough
+  CATE_test <- combined_data %>% group_by(get(factor)) %>%
+    summarise(tau.mean = mean(tau.hat,na.rm = TRUE),
+              tau.sd = sd(tau.hat,na.rm = TRUE))
+  ## ATE storage df 
+  ATE.df <- data.frame(ATE=double(),
+                       SE=integer(),
+                       strata = integer(),
+                       method = c())
+  ## LM forest storage df
+  LMforest.df <- data.frame(ATE=double(),
+                            SE=integer(),
+                            strata = integer(),
+                            method = c())
+  
+  ## Create the calibration plot 
+  column_of_interest <- combined_data[,colnames(combined_data) == factor]
+  strata <- length(unique(column_of_interest))
+  
+  ## Store tau hats from each method for plotting purposes
+  for (i in 1:strata){
+    temp_data <- combined_data %>% filter(get(factor) == sort(unique(column_of_interest))[i])
+    ## RD
+    rd_lm <- temp_data %$%
+      lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
+    ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
+    ATE.df[i,"SE"] <- coeftest(rd_lm, vcov=vcovHC(rd_lm, "HC2"))[2,2]
+    ATE.df[i,"strata"] <- i 
+    ATE.df[i,"method"] <- "Regression Discontinuity"
+    ## LM forest
+    # Wlm = temp_data[,treatment]
+    # Zlm = temp_data$fare - 15
+    # Z1lm= Zlm*Wlm
+    # Z0lm= Zlm*(1-Wlm)
+    # lmforest = lm_forest(X=temp_data[,covariates], Y=temp_data[,outcome], W=cbind(Wlm, Z0lm, Z1lm), num.trees = 100)
+    # lmforest.tau <- predict(lmf)$predictions[, 1, ]
+    tau.temp = temp_data$tau.hat
+    LMforest.df[i,"ATE"] <-mean(tau.temp)
+    LMforest.df[i,"SE"] <- sqrt(var(tau.temp) / length(tau.temp))
+    LMforest.df[i,"strata"] <- i 
+    LMforest.df[i,"method"] <- "LM Forest"
+  }
+  
+  ## Combine the tau hats from all methods 
+  res <- rbind(ATE.df, LMforest.df)
+  
+  ## Recode values in strata
+  for (i in 1:strata){
+    res$strata[res$strata == i] <- factor_label[i]
+  }
+  
+  calibration_plot <- ggplot(res) +
+    aes(x = strata, y = ATE, group=method, color=method) + 
+    geom_point(position=position_dodge(0.2)) +
+    geom_errorbar(aes(ymin=ATE-2*SE , ymax=ATE+2*SE), width=.2, position=position_dodge(0.2)) +
+    ylab("") + xlab("") +
+    ggtitle("Average CATE within each ranking (as defined by predicted CATE)") +
+    theme_light() +
+    theme(legend.position="bottom", legend.title = element_blank())
+  
+  return(calibration_plot)
+}
+
+data.test.drfboro <- data.test %>% filter(drf_boro != "")
+tau.hat.drfboro <- tau.hat[data.test$drf_boro != ""]
+
+data.test.noNA <- data.test %>% filter(!is.na(gr_inc10_All))
+tau.hat2 <- tau.hat[!is.na(data.test$gr_inc10_All)]
+
+## Generate plots of HTE for known groups
+
+# Weekends vs weekdays
+sort(unique(data.test.drfboro$weekend))
+plot_weekend <- HTE_plot(tau.hat,data.test,factor = "weekend", factor_label = c("Weekday", "Weekend"))
+ggsave(file=paste0(Output, "HTE_by_weekend_LM_forest_",suffix,".png"), plot = plot_weekend)
+
+# Morning vs afternoon
+sort(unique(data.test.drfboro$pickup_time_group))
+plot_TimeofDay <- HTE_plot(tau.hat,data.test,factor = "pickup_time_group", factor_label = c('Morning', 'Afternoon', 'Night'))
+ggsave(file=paste0(Output, "HTE_by_timeofday_LM_forest_",suffix,".png"), plot = plot_TimeofDay)
+
+# Income deciles
+sort(unique(data.test.drfboro$gr_inc10_All))
+plot_Income <- HTE_plot(tau.hat2,data.test.noNA,factor = "gr_inc10_All", factor_label = c("1","2","3","4","5","6","7","8","9","10"))
+ggsave(file=paste0(Output, "HTE_by_income_LM_forest_",suffix,".png"), plot = plot_Income)
+
+# Borough
+sort(unique(data.test.drfboro$drf_boro))
+plot_drfboro <- HTE_plot(tau.hat = tau.hat.drfboro,data.test = data.test.drfboro,factor = "drf_boro", factor_label = c("Brooklyn", "Manhattan", "Queens", "Staten Island", "The Bronx"))
+ggsave(file=paste0(Output, "HTE_by_dropoff_LM_forest_",suffix,".png"), plot = plot_drfboro)
