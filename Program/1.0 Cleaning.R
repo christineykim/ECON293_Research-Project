@@ -41,10 +41,10 @@ tips2009_clean <- read_dta(paste0(Raw_Data,"tips2009_clean.dta"))
 
 ## Subset the data according to the following rules:
 ## 1. Rides from the vendors only
-## 2. Fare between 1) 10 to 20 dollars 2) 12 to 18 dollars 
+## 2. Fare between 1) 10 to 20 dollars 2) 12 to 17 dollars 
 
 tips2009_vendor_1020 <- tips2009_clean %>% filter(vendor == 1 & fare >= 10 & fare <= 20)
-tips2009_vendor_1218 <- tips2009_clean %>% filter(vendor == 1 & fare >= 12 & fare <= 18)
+tips2009_vendor_1217 <- tips2009_clean %>% filter(vendor == 1 & fare >= 12 & fare <= 17)
 
 # Step 2: Create additional categorical variables for the covariates -----
 
@@ -81,8 +81,8 @@ classify_cov <- function(data){
 }
 
 tips2009_1020_regroup <- classify_cov(tips2009_vendor_1020)
-tips2009_1218_regroup <- classify_cov(tips2009_vendor_1218)
+tips2009_1217_regroup <- classify_cov(tips2009_vendor_1217)
 
 # Step 3: Save the data -----
 write.csv(tips2009_1020_regroup,paste0(In_Data,"fare_1020_recoded.csv"))
-write.csv(tips2009_1218_regroup,paste0(In_Data,"fare_1218_recoded.csv"))
+write.csv(tips2009_1217_regroup,paste0(In_Data,"fare_1217_recoded.csv"))
