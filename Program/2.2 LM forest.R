@@ -193,13 +193,13 @@ HTE_plot <- function(tau.hat,data.test,factor, factor_label){
     ATE.df[i,"strata"] <- i 
     ATE.df[i,"method"] <- "Regression Discontinuity"
     ## LM forest
-    # Wlm = temp_data[,treatment]
-    # Zlm = temp_data$fare - 15
-    # Z1lm= Zlm*Wlm
-    # Z0lm= Zlm*(1-Wlm)
-    # lmforest = lm_forest(X=temp_data[,covariates], Y=temp_data[,outcome], W=cbind(Wlm, Z0lm, Z1lm), num.trees = 100)
-    # lmforest.tau <- predict(lmf)$predictions[, 1, ]
-    tau.temp = temp_data$tau.hat
+     Wlm = temp_data[,treatment]
+     Zlm = temp_data$fare - 15
+     Z1lm= Zlm*Wlm
+     Z0lm= Zlm*(1-Wlm)
+     lmforest = lm_forest(X=temp_data[,covariates], Y=temp_data[,outcome], W=cbind(Wlm, Z0lm, Z1lm), num.trees = 100)
+     tau.temp <- predict(lmf)$predictions[, 1, ]
+    #tau.temp = temp_data$tau.hat
     LMforest.df[i,"ATE"] <-mean(tau.temp)
     LMforest.df[i,"SE"] <- sqrt(var(tau.temp) / length(tau.temp))
     LMforest.df[i,"strata"] <- i 
@@ -207,7 +207,8 @@ HTE_plot <- function(tau.hat,data.test,factor, factor_label){
   }
   
   ## Combine the tau hats from all methods 
-  res <- rbind(ATE.df, LMforest.df)
+  #res <- rbind(ATE.df, LMforest.df)
+  res <- rbind(LMforest.df)
   
   ## Recode values in strata
   for (i in 1:strata){
