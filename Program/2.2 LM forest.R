@@ -172,6 +172,11 @@ HTE_plot <- function(tau.hat,data.test,factor, factor_label){
                        SE=integer(),
                        strata = integer(),
                        method = c())
+  ## Estimate Causal Forest for each split 
+  CausalF.df <- data.frame(ATE=double(),
+                           SE=integer(),
+                           strata = integer(),
+                           method = c())
   ## LM forest storage df
   LMforest.df <- data.frame(ATE=double(),
                             SE=integer(),
@@ -192,14 +197,20 @@ HTE_plot <- function(tau.hat,data.test,factor, factor_label){
     ATE.df[i,"SE"] <- coeftest(rd_lm, vcov=vcovHC(rd_lm, "HC2"))[2,2]
     ATE.df[i,"strata"] <- i 
     ATE.df[i,"method"] <- "Regression Discontinuity"
+    ## Causal Forest
+    forest <- causal_forest(X=temp_data[,covariates],W=temp_data[,treatment],Y=temp_data[,outcome],num.trees = 100)
+    forest.ate <- average_treatment_effect(forest)
+    CausalF.df[i,"ATE"] <- forest.ate[1]
+    CausalF.df[i,"SE"] <- forest.ate[2]
+    CausalF.df[i,"strata"] <- i 
+    CausalF.df[i,"method"] <- "Causal Forest"
     ## LM forest
-     Wlm = temp_data[,treatment]
-     Zlm = temp_data$fare - 15
-     Z1lm= Zlm*Wlm
-     Z0lm= Zlm*(1-Wlm)
-     lmforest = lm_forest(X=temp_data[,covariates], Y=temp_data[,outcome], W=cbind(Wlm, Z0lm, Z1lm), num.trees = 100)
-     tau.temp <- predict(lmf)$predictions[, 1, ]
-    #tau.temp = temp_data$tau.hat
+    Wlm = temp_data[,treatment]
+    Zlm = temp_data$fare - 15
+    Z1lm= Zlm*Wlm
+    Z0lm= Zlm*(1-Wlm)
+    lmforest = lm_forest(X=temp_data[,covariates], Y=temp_data[,outcome], W=cbind(Wlm, Z0lm, Z1lm), num.trees = 100)
+    tau.temp <- predict(lmforest)$predictions[, 1, ]
     LMforest.df[i,"ATE"] <-mean(tau.temp)
     LMforest.df[i,"SE"] <- sqrt(var(tau.temp) / length(tau.temp))
     LMforest.df[i,"strata"] <- i 
@@ -207,8 +218,8 @@ HTE_plot <- function(tau.hat,data.test,factor, factor_label){
   }
   
   ## Combine the tau hats from all methods 
-  #res <- rbind(ATE.df, LMforest.df)
-  res <- rbind(LMforest.df)
+  res <- rbind(ATE.df, CausalF.df, LMforest.df)
+  #res <- rbind(LMforest.df)
   
   ## Recode values in strata
   for (i in 1:strata){
