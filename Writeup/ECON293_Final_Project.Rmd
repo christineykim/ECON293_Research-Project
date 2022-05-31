@@ -4,40 +4,42 @@ output: pdf_document
 date: '2022-05-25'
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
 ## Role of Default in Probability of Tipping: An ML Approach
 
+Yuejun Chen, Bruno Escobar, Christine Kim, Ella Mao
+
+*June 1, 2022*
+
 ## Introduction
+
+Our study examines the default effects by looking at the setting of tipping taxi drivers in New York City. Specifically, we seek to understand whether a higher default tip suggestion would change customer's probability of tipping. This setting offers two unique benefits. First, it provides a setting where consumers are facing the choice sets regularly. Second, the high-frequency nature of tipping results in a large dataset, which enables researchers to apply machine learning methods.
 
 ## Data Cleaning
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
-## Clear the data environment
+# Step 0: Basic set up -----
+set.seed(1234)
 rm(list = ls())
 
-## Packages
-list.of.packages <- c("tidyverse","dplyr","fastDummies","gtsummary","labelled","lmtest","sandwich","grf","glmnet","sandwich","splines","ggplot2","ggpubr","data.table","qwraps2","rpart","MASS","pracma","haven","estimatr","Matrix")
+## Libraries and Packages
+library(causalTree)
+library(optrdd)
+library(quadprog)
+list.of.packages <- c("tidyverse","dplyr","fastDummies","gtsummary","labelled","lmtest","sandwich","grf","glmnet","sandwich","splines","ggplot2","ggpubr","data.table","qwraps2","rpart","MASS","pracma","haven","estimatr","Matrix","magrittr")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
 if(length(new.packages)) install.packages(new.packages)
 for(pkg in list.of.packages){
   library(pkg, character.only = TRUE)
 }
-library(causalTree)
-library(optrdd)
-library(quadprog)
 
 ## File path 
 user = Sys.info()[["user"]]
 if (user == "51989"){ ## Bruno's PC path
   user = "51989/OneDrive/Escritorio"
 }
-
 In_Data <- paste0("/Users/", user, "/Dropbox/Default Tips Project/Data/Intermediate/")
 Raw_Data <- paste0("/Users/", user, "/Dropbox/Default Tips Project/Data/Raw/")
-Output <- "/Users/chenyuej/Dropbox/Default Tips Project/Output/"
+Output <- paste0("/Users/", user, "/Dropbox/Default Tips Project/Output/")
 
 ## Today's date
 Today <- format(Sys.Date(), "%d%m%Y")
@@ -46,16 +48,15 @@ Today <- format(Sys.Date(), "%d%m%Y")
 ```{r}
 
 # Step 1: Cleaning -----
-
 ## Read in the stata version of the data
-tips2009_clean <- read_dta(paste0(Raw_Data,"tips2009_clean.dta"))
+tips2009_vendor_1218 <- read_dta(paste0(Raw_Data,"tips2009_clean.dta"))
 
 ## Subset the data according to the following rules:
 ## 1. Rides from the vendors only
 ## 2. Fare between 12 to 18 dollars 
-tips2009_vendor_1218 <- tips2009_clean %>% filter(vendor == 1 & fare >= 12 & fare <= 18)
+tips2009_vendor_1218 <- tips2009_vendor_1218 %>% filter(vendor == 1 & fare >= 12 & fare <= 18)
 
-# Step 2: Create additional categorical variables for the covariates
+# Step 2: Create additional categorical variables for the covariates  -----
 classify_cov <- function(data){
   ## Categorize day of week 
   data2 <- data %>% 
@@ -91,25 +92,28 @@ classify_cov <- function(data){
 tips2009_1218_regroup <- classify_cov(tips2009_vendor_1218)
 
 # Step 3: Save the data -----
-write.csv(tips2009_1218_regroup,paste0(In_Data,"fare_1218_recoded.csv"))
+write.csv(tips2009_1218_regroup,paste0(In_Data,"fare_1218_recoded_final.csv"))
 
 ```
 
 ## Methods
 
 ```{r}
+
 # Step 1: Import the data -----
-tips2009_1218 <- read.csv(paste0(In_Data,"fare_1218_recoded.csv"))
-reduced=0
+tips2009_1218 <- read.csv(paste0(In_Data,"fare_1218_recoded_final.csv"))
+# Create subsets
+reduced=1
 if (reduced == 1){
-data = subset(tips2009_1218, fare>=14 & fare<=16)
-suffix = "r1"
+  data = subset(tips2009_1218, fare>=14 & fare<=16)
+  suffix = "r1"
 }
 if (reduced == 0){
   data = subset(tips2009_1218, fare>=12 & fare<=18)
-suffix = "r0"  
+  suffix = "r0"  
 }
-# Step 2: Applied LM-forest to the 1416 data -----
+
+# Step 2: Set up variables -----
 n <- nrow(data)
 # Treatment: Whether the fare amount is above or below 15 dollars
 treatment <- "dsc_15"
@@ -117,111 +121,9 @@ treatment <- "dsc_15"
 outcome <- "tip_zero"
 running = "fare"
 # Additional covariates
-covariates <- c("weekend", "pickup_time_group", "gr_inc10_All", "Manhattan_pkp", "Brooklyn_pkp",
-                "Queens_pkp", "Bronx_pkp", "Staten_pkp", "Other_pkp", "Manhattan_drf", 
-                "Brooklyn_drf", "Queens_drf", "Bronx_drf", "Staten_drf", "Other_drf")
-```
+covariates <- c("weekend", "pickup_time_group", "gr_inc10_All", "Manhattan_pkp", "Brooklyn_pkp", "Queens_pkp", "Bronx_pkp", "Staten_pkp", "Other_pkp", "Manhattan_drf", "Brooklyn_drf", "Queens_drf", "Bronx_drf", "Staten_drf", "Other_drf")
 
-### X Learner
-
-```{r}
-
-
-# Split the data into training and testing
-split1<- sample(c(rep(0, 0.7 * nrow(data)), rep(1, 0.3 * nrow(data))))
-data.train <- data[split1 == 0,]
-data.test <- data[split1 == 1,]
-
-data.train <- data[split1 == 0,]
-data.test <- data[split1 == 1,]
-
-W_train <- data.train[,treatment]
-Y_train <- data.train[,outcome]
-X_train <- data.train[,covariates]
-
-W_test <- data.test[,treatment]
-Y_test <- data.test[,outcome]
-X_test <- data.test[,covariates]
-
-# Implement the x learner 
-tf0 = regression_forest(X_train[W_train==0,], Y_train[W_train==0])
-yhat0 = predict(tf0, X_train[W_train==1,])$predictions
-xf1 = regression_forest(X_train[W_train==1,], Y_train[W_train==1]-yhat0)
-xf.preds.1 = predict(xf1, X_test)$predictions
-xf.preds.1[W_test==1] = predict(xf1,X_test[W_test==1,])$predictions
-tf1 = regression_forest(X_train[W_train==1,], Y_train[W_train==1])
-yhat1 = predict(tf1, X_train[W_train==0,])$predictions
-xf0 = regression_forest(X_train[W_train==0,], yhat1-Y_train[W_train==0])
-xf.preds.0 = predict(xf0, X_test)$predictions
-xf.preds.0[W_test==0] = predict(xf0,X_test[W_test==0,])$predictions
-propf = regression_forest(X_test, W_test)
-ehat = predict(propf)$predictions
-
-## Create a causal forest for plotting purposes.
-cf.priority = causal_forest(X_train, Y_train, W_train)
-priority.cate <- predict(cf.priority, X_test)$predictions
-
-# Show the CATE distribution 
-png(file=paste0(Output, "X_Learner_CATE.png"),width=595, height=545)
-hist(ehat, main = "Distribution of CATEs, X Learner", xlab = "CATE")
-dev.off()
-```
-
-### Causal Forest
-
-```{r}
-
-# Step 2: Applied X-learner to the 1020 data -----
-data <- tips2009_1020
-n <- nrow(tips2009_1020)
-# Treatment: Whether the fare amount is above or below 15 dollars
-treatment <- "dsc_15"
-# Outcome: Whether someone tips 0. 1 for yes, 0 for no.
-outcome <- "tip_zero"
-# Additional covariates
-covariates <- c("weekend", "pickup_time_group", "gr_inc10_All", "Manhattan_pkp", "Brooklyn_pkp",
-                "Queens_pkp", "Bronx_pkp", "Staten_pkp", "Other_pkp", "Manhattan_drf", 
-                "Brooklyn_drf", "Queens_drf", "Bronx_drf", "Staten_drf", "Other_drf")
-
-# Split the data into training and testing
-split1<- sample(c(rep(0, 0.7 * nrow(data)), rep(1, 0.3 * nrow(data))))
-data.train <- data[split1 == 0,]
-data.test <- data[split1 == 1,]
-
-data.train <- data[split1 == 0,]
-data.test <- data[split1 == 1,]
-
-W_train <- data.train[,treatment]
-Y_train <- data.train[,outcome]
-X_train <- data.train[,covariates]
-
-W_test <- data.test[,treatment]
-Y_test <- data.test[,outcome]
-X_test <- data.test[,covariates]
-
-# Implement causal forest in grf
-cf_model = causal_forest(
-  X = X_train,
-  Y = Y_train,
-  W = W_train
-)
-
-# Estimate treatment effects on test data
-cf_predict = predict(cf_model, X_test)
-
-# Show the CATE distribution 
-png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
-hist(cf_predict$predictions, main = "Distribution of CATEs, X Learner", xlab = "CATE")
-dev.off()
-
-```
-
-### LM Forest
-
-```{r}
-
-
-# Split the data into training and testing
+# Step 3: Split the data into training and testing -----
 split1<- sample(c(rep(0, 0.7 * nrow(data)), rep(1, 0.3 * nrow(data))))
 data.train <- data[split1 == 0,]
 data.test <- data[split1 == 1,]
@@ -237,56 +139,187 @@ Y_test <- data.test[,outcome]
 X_test <- data.test[,covariates]
 Z1_test = (data.test[,running]-15)*W_test
 Z0_test = (data.test[,running]-15)*(1-W_test)
+```
 
-## LM forest
-lmf = lm_forest(X_train, Y_train, cbind(W_train, Z0_train, Z1_train))
-tau.hat <- predict(lmf,X_test)$predictions[, 1, ]
+### Causal Forest
 
-# Step 3: Generate the resulted statistics -----
-
-## Estimate the ATE for the whole population 
-lm.ATE.mean <- mean(tau.hat)
-lm.ATE.SD <- sd(tau.hat)
-ATE_stats <- c(lm.ATE.mean,lm.ATE.SD)
-write.csv(ATE_stats,paste0(Output, "LM_forest_sumstats_", suffix,".csv"),row.names=F)
-
-# Step 4: Generate the diagnostic plots -----
-
-## 4.1. QINI plot -----
-
-## Create a causal forest for plotting purposes  
-cf.priority = causal_forest(X_train, Y_train, W_train)
+```{r}
+# Implement causal forest in grf
+cf.priority = causal_forest(X_train, Y_train, W_train, num.trees = 100)
 priority.cate <- predict(cf.priority, X_test)$predictions
 
 ## Estimate the causal forest on the test data
 cf.eval <- causal_forest(X_test, Y_test, W_test)
 
+## Estimate the ATE for the whole population 
+cf.ATE.mean <- mean(priority.cate)
+cf.ATE.SD <- sd(priority.cate)
+ATE_stats <- c(cf.ATE.mean,cf.ATE.SD)
+write.csv(ATE_stats,paste0(Output, "Causal_Forest_sumstats.csv"),row.names=F)
+
+# Show the CATE distribution 
+hist(priority.cate, main = "Distribution of CATEs, Causal Forest", xlab = "CATE", xlim=c(-0.06,0.06))
+png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
+
 ## Plot QINI curve - using rank_average_treatment_effect
-rate <- rank_average_treatment_effect(cf.eval, tau.hat, target = "QINI")
+rate <- rank_average_treatment_effect(cf.eval, priority.cate, target = "QINI")
+png(file=paste0(Output, "Causal_Forest_QINI.png"),width=595, height=545)
+plot(rate)
+print(rate)
+
+## Create quartile plots
+cf.tau.hat <- priority.cate
+strata <- 10
+quintiles <- quantile(cf.tau.hat, prob=seq(from=0,to=1,by=1/strata))
+cf.tau.hat.quartiles <- cut(cf.tau.hat, breaks = quintiles, labels = 1:strata, include.lowest = TRUE)
+## Combine all the data together
+combined_data <- as.data.frame(cbind(data.test,cf.tau.hat,cf.tau.hat.quartiles))
+## Store tau estimates by quartiles 
+CATE_test <- combined_data %>% group_by(cf.tau.hat.quartiles) %>%
+  summarise(tau.mean = mean(cf.tau.hat,na.rm = TRUE),
+            tau.sd = sd(cf.tau.hat,na.rm = TRUE))
+## Estimate ATE for each split 
+ATE.df <- data.frame(ATE=double(),
+                     SE=integer())
+
+## Create the calibration plot 
+for (i in 1:strata){
+  temp_data <- combined_data %>% filter(cf.tau.hat.quartiles == i)
+  rd_lm <- temp_data %$%
+    lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
+  ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
+  ATE.df[i,"SE"] <- summary(rd_lm)$coefficients[2,2]
+}
+
+## CI
+ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
+## Combine the dataset
+ATE.df.fnl <- cbind(ATE.df2,CATE_test)
+
+
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
+  geom_point() + 
+  geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
+  theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
+
+ggsave(file=paste0(Output, "Calibration_by_quartile.png"), plot = cali_plot, width=8, height=4.94)
+
+cali_plot
+```
+
+### X Learner
+
+```{r}
+# Implement the x learner on the testing data 
+tf0 = regression_forest(X_train[W_train==0,], Y_train[W_train==0], num.trees = 100)
+yhat0 = predict(tf0, X_train[W_train==1,])$predictions
+xf1 = regression_forest(X_train[W_train==1,], Y_train[W_train==1]-yhat0, num.trees = 100)
+xf.preds.1 = predict(xf1, X_test)$predictions
+xf.preds.1[W_test==1] = predict(xf1,X_test[W_test==1,])$predictions
+tf1 = regression_forest(X_train[W_train==1,], Y_train[W_train==1], num.trees = 100)
+yhat1 = predict(tf1, X_train[W_train==0,])$predictions
+xf0 = regression_forest(X_train[W_train==0,], yhat1-Y_train[W_train==0], num.trees = 100)
+xf.preds.0 = predict(xf0, X_test)$predictions
+xf.preds.0[W_test==0] = predict(xf0,X_test[W_test==0,])$predictions
+propf = regression_forest(X_test, W_test)
+ehat = predict(propf)$predictions
+preds.xf = (1 - ehat) * xf.preds.1 + ehat * xf.preds.0
+
+## Estimate the ATE for the whole population 
+xf.ATE.mean <- mean(preds.xf)
+xf.ATE.SD <- sd(preds.xf)
+ATE_stats <- c(xf.ATE.mean,xf.ATE.SD)
+write.csv(ATE_stats,paste0(Output, "X_learner_sumstats.csv"),row.names=F)
+
+## Plot QINI curve - using rank_average_treatment_effect
+rate <- rank_average_treatment_effect(cf.eval, preds.xf, target = "QINI")
+png(file=paste0(Output, "X_Learner_QINI.png"),width=595, height=545)
+plot(rate)
+print(rate)
+dev.off()
+
+# Show the CATE distribution 
+png(file=paste0(Output, "X_Learner_CATE.png"),width=595, height=545)
+hist(ehat, main = "", xlab = "CATE")
+dev.off()
+
+## Create quartile plots
+xf.tau.hat <- preds.xf
+strata <- 10
+quintiles <- quantile(xf.tau.hat, prob=seq(from=0,to=1,by=1/strata))
+xf.tau.hat.quartiles <- cut(xf.tau.hat, breaks = quintiles, labels = 1:strata, include.lowest = TRUE)
+## Combine all the data together
+combined_data <- as.data.frame(cbind(data.test,xf.tau.hat,xf.tau.hat.quartiles))
+## Store tau estimates by quartiles 
+CATE_test <- combined_data %>% group_by(xf.tau.hat.quartiles) %>%
+  summarise(tau.mean = mean(xf.tau.hat,na.rm = TRUE),
+            tau.sd = sd(xf.tau.hat,na.rm = TRUE))
+## Estimate ATE for each split 
+ATE.df <- data.frame(ATE=double(),
+                  SE=integer())
+
+## Create the calibration plot 
+for (i in 1:strata){
+  temp_data <- combined_data %>% filter(xf.tau.hat.quartiles == i)
+  rd_lm <- temp_data %$%
+    lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
+  ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
+  ATE.df[i,"SE"] <- summary(rd_lm)$coefficients[2,2]
+}
+
+## CI
+ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
+## Combine the dataset
+ATE.df.fnl <- cbind(ATE.df2,CATE_test)
+
+
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
+  geom_point() + 
+  geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
+  theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
+
+ggsave(file=paste0(Output, "Calibration_by_quartile.png"), plot = cali_plot, width=8, height=4.94)
+
+cali_plot
+```
+
+### LM Forest
+
+```{r}
+## LM forest
+lmf = lm_forest(X_train, Y_train, cbind(W_train, Z0_train, Z1_train), num.tree = 100)
+lm.tau.hat <- predict(lmf,X_test)$predictions[, 1, ]
+
+## Estimate the ATE for the whole population 
+lm.ATE.mean <- mean(lm.tau.hat)
+lm.ATE.SD <- sd(lm.tau.hat)
+ATE_stats <- c(lm.ATE.mean,lm.ATE.SD)
+write.csv(ATE_stats,paste0(Output, "LM_forest_sumstats_", suffix,".csv"),row.names=F)
+
+## Plot QINI curve - using rank_average_treatment_effect
+rate <- rank_average_treatment_effect(cf.eval, lm.tau.hat, target = "QINI")
 png(file=paste0(Output, "LM_forest_QINI_", suffix,".png"),width=595, height=545)
 plot(rate)
 print(rate)
 dev.off()
 
-## 4.2. CATE distribution ----
+# Show the CATE distribution 
 png(file=paste0(Output, "LM_forest_CATE_", suffix,".png"),width=595, height=545)
-hist(tau.hat, main = "", xlab = "CATE")
+hist(lm.tau.hat, main = "", xlab = "CATE")
 dev.off()
 
-##4.3. Create quantile plots ----
-
-## Set-up
+## Create quantile plots ----
 strata <- 10
-quintiles <- quantile(tau.hat, prob=seq(from=0,to=1,by=1/strata))
-tau.hat.quartiles <- cut(tau.hat, breaks = quintiles, labels = 1:strata, include.lowest = TRUE)
+quintiles <- quantile(lm.tau.hat, prob=seq(from=0,to=1,by=1/strata))
+lm.tau.hat.quartiles <- cut(lm.tau.hat, breaks = quintiles, labels = 1:strata, include.lowest = TRUE)
 
 ## Combine all the data together
-combined_data <- as.data.frame(cbind(data.test,tau.hat,tau.hat.quartiles))
+combined_data <- as.data.frame(cbind(data.test,lm.tau.hat,lm.tau.hat.quartiles))
 
 ## Store tau estimates by quartiles 
-CATE_test <- combined_data %>% group_by(tau.hat.quartiles) %>%
-  summarise(tau.mean = mean(tau.hat,na.rm = TRUE),
-            tau.sd = sd(tau.hat,na.rm = TRUE))
+CATE_test <- combined_data %>% group_by(lm.tau.hat.quartiles) %>%
+  summarise(tau.mean = mean(lm.tau.hat,na.rm = TRUE),
+            tau.sd = sd(lm.tau.hat,na.rm = TRUE))
 
 ## Estimate ATE for each split 
 ATE.df <- data.frame(ATE=double(),
@@ -294,7 +327,7 @@ ATE.df <- data.frame(ATE=double(),
 
 ## Create the calibration plot 
 for (i in 1:strata){
-  temp_data <- combined_data %>% filter(tau.hat.quartiles == i)
+  temp_data <- combined_data %>% filter(lm.tau.hat.quartiles == i)
   rd_lm <- temp_data %$%
     lm(tip_zero ~ dsc_15 + I(fare - 15) + dsc_15:I(fare - 15))
   ATE.df[i,"ATE"] <- rd_lm$coefficients["dsc_15"]
@@ -313,21 +346,21 @@ cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
   theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
 
-ggsave(file=paste0(Output,"Calibration_by_quartile_LM_forest_", suffix,".png"),plot = cali_plot)
-dev.off()
+ggsave(file=paste0(Output,"Calibration_by_quartile_LM_forest_", suffix,".png"), plot = cali_plot, width=8, height=4.94)
+
 cali_plot
+```
 
-# NOTE: The workspace with all data and estimations up to this point are stored in Output\lm_forest\lm_f_workspace_bruno
+## Create HTE plots by categoircal variables
 
-# Step 5: Create HTE plots by categoircal variables ----
-
-HTE_plot <- function(tau.hat,data.test,factor, factor_label){
+```{r}
+HTE_plot <- function(lm.tau.hat,data.test,factor, factor_label){
   ## Combine all the data together
-  combined_data <- as.data.frame(cbind(data.test,tau.hat))
+  combined_data <- as.data.frame(cbind(data.test,lm.tau.hat))
   ## Store tau estimates by drop off borough
   CATE_test <- combined_data %>% group_by(get(factor)) %>%
-    summarise(tau.mean = mean(tau.hat,na.rm = TRUE),
-              tau.sd = sd(tau.hat,na.rm = TRUE))
+    summarise(tau.mean = mean(lm.tau.hat,na.rm = TRUE),
+              tau.sd = sd(lm.tau.hat,na.rm = TRUE))
   ## ATE storage df 
   ATE.df <- data.frame(ATE=double(),
                        SE=integer(),
@@ -400,30 +433,30 @@ HTE_plot <- function(tau.hat,data.test,factor, factor_label){
 }
 
 data.test.drfboro <- data.test %>% filter(drf_boro != "")
-tau.hat.drfboro <- tau.hat[data.test$drf_boro != ""]
+lm.tau.hat.drfboro <- lm.tau.hat[data.test$drf_boro != ""]
 
 data.test.noNA <- data.test %>% filter(!is.na(gr_inc10_All))
-tau.hat2 <- tau.hat[!is.na(data.test$gr_inc10_All)]
+lm.tau.hat2 <- lm.tau.hat[!is.na(data.test$gr_inc10_All)]
 
 ## Generate plots of HTE for known groups
 
 # Weekends vs weekdays
 sort(unique(data.test.drfboro$weekend))
-plot_weekend <- HTE_plot(tau.hat,data.test,factor = "weekend", factor_label = c("Weekday", "Weekend"))
-ggsave(file=paste0(Output, "HTE_by_weekend_LM_forest_",suffix,".png"), plot = plot_weekend)
+plot_weekend <- HTE_plot(lm.tau.hat,data.test,factor = "weekend", factor_label = c("Weekday", "Weekend"))
+ggsave(file=paste0(Output, "HTE_by_weekend_LM_forest_",suffix,".png"), plot = plot_weekend, width=8, height=4.94)
 
 # Morning vs afternoon
 sort(unique(data.test.drfboro$pickup_time_group))
-plot_TimeofDay <- HTE_plot(tau.hat,data.test,factor = "pickup_time_group", factor_label = c('Morning', 'Afternoon', 'Night'))
-ggsave(file=paste0(Output, "HTE_by_timeofday_LM_forest_",suffix,".png"), plot = plot_TimeofDay)
+plot_TimeofDay <- HTE_plot(lm.tau.hat,data.test,factor = "pickup_time_group", factor_label = c('Morning', 'Afternoon', 'Night'))
+ggsave(file=paste0(Output, "HTE_by_timeofday_LM_forest_",suffix,".png"), plot = plot_TimeofDay, width=8, height=4.94)
 
 # Income deciles
 sort(unique(data.test.drfboro$gr_inc10_All))
-plot_Income <- HTE_plot(tau.hat2,data.test.noNA,factor = "gr_inc10_All", factor_label = c("1","2","3","4","5","6","7","8","9","10"))
-ggsave(file=paste0(Output, "HTE_by_income_LM_forest_",suffix,".png"), plot = plot_Income)
+plot_Income <- HTE_plot(lm.tau.hat2,data.test.noNA,factor = "gr_inc10_All", factor_label = c("1","2","3","4","5","6","7","8","9","10"))
+ggsave(file=paste0(Output, "HTE_by_income_LM_forest_",suffix,".png"), plot = plot_Income, width=8, height=4.94)
 
 # Borough
 sort(unique(data.test.drfboro$drf_boro))
-plot_drfboro <- HTE_plot(tau.hat = tau.hat.drfboro,data.test = data.test.drfboro,factor = "drf_boro", factor_label = c("Brooklyn", "Manhattan", "Queens", "Staten Island", "The Bronx"))
-ggsave(file=paste0(Output, "HTE_by_dropoff_LM_forest_",suffix,".png"), plot = plot_drfboro)
+plot_drfboro <- HTE_plot(lm.tau.hat = lm.tau.hat.drfboro,data.test = data.test.drfboro,factor = "drf_boro", factor_label = c("Brooklyn", "Manhattan", "Queens", "Staten Island", "The Bronx"))
+ggsave(file=paste0(Output, "HTE_by_dropoff_LM_forest_",suffix,".png"), plot = plot_drfboro, width=8, height=4.94)
 ```
