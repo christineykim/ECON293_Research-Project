@@ -99,7 +99,6 @@ write.csv(tips2009_1218_regroup,paste0(In_Data,"fare_1218_recoded_final.csv"))
 ## Methods
 
 ```{r}
-
 # Step 1: Import the data -----
 tips2009_1218 <- read.csv(paste0(In_Data,"fare_1218_recoded_final.csv"))
 # Create subsets
@@ -158,8 +157,8 @@ ATE_stats <- c(cf.ATE.mean,cf.ATE.SD)
 write.csv(ATE_stats,paste0(Output, "Causal_Forest_sumstats.csv"),row.names=F)
 
 # Show the CATE distribution 
-hist(priority.cate, main = "Distribution of CATEs, Causal Forest", xlab = "CATE", xlim=c(-0.06,0.06))
-png(file=paste0(Output, "Causal_Forest_CATE.png"),width=595, height=545)
+png(file=paste0(Output, "Causal_Forest_CATE.png"), width=595, height=368)
+hist(priority.cate, main = "", xlab = "CATE",xlim=c(-0.06,0.06))
 
 ## Plot QINI curve - using rank_average_treatment_effect
 rate <- rank_average_treatment_effect(cf.eval, priority.cate, target = "QINI")
@@ -196,13 +195,20 @@ ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
 ## Combine the dataset
 ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 
-
-cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
+  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "") + 
+  theme(axis.text.x = element_text(face="plain",
+                                   size=12),
+        axis.text.y = element_text(face="plain", 
+                                   size=12),
+        axis.title=element_text(size=16,face="plain")
+  ) +
+  scale_y_continuous(breaks=seq(-0.02,0.06,0.02))
 
-ggsave(file=paste0(Output, "Calibration_by_quartile.png"), plot = cali_plot, width=8, height=4.94)
+
+ggsave(file=paste0(Output, "Calibration_by_quartile_Causal_forest.png"), plot = cali_plot, width=8, height=4.94)
 
 cali_plot
 ```
@@ -236,12 +242,10 @@ rate <- rank_average_treatment_effect(cf.eval, preds.xf, target = "QINI")
 png(file=paste0(Output, "X_Learner_QINI.png"),width=595, height=545)
 plot(rate)
 print(rate)
-dev.off()
 
 # Show the CATE distribution 
-png(file=paste0(Output, "X_Learner_CATE.png"),width=595, height=545)
-hist(ehat, main = "", xlab = "CATE")
-dev.off()
+png(file=paste0(Output, "X_Learner_CATE.png"),width=595, height=368)
+hist(ehat, main = "", xlab = "CATE",xlim=c(-0.06,0.06))
 
 ## Create quartile plots
 xf.tau.hat <- preds.xf
@@ -272,13 +276,20 @@ ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
 ## Combine the dataset
 ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 
-
-cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
+  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "") + 
+  theme(axis.text.x = element_text(face="plain",
+                                   size=12),
+        axis.text.y = element_text(face="plain", 
+                                   size=12),
+        axis.title=element_text(size=16,face="plain")
+  ) +
+  scale_y_continuous(breaks=seq(-0.02,0.06,0.02))
 
-ggsave(file=paste0(Output, "Calibration_by_quartile.png"), plot = cali_plot, width=8, height=4.94)
+
+ggsave(file=paste0(Output, "Calibration_by_quartile_X_learner.png"), plot = cali_plot, width=8, height=4.94)
 
 cali_plot
 ```
@@ -301,12 +312,10 @@ rate <- rank_average_treatment_effect(cf.eval, lm.tau.hat, target = "QINI")
 png(file=paste0(Output, "LM_forest_QINI_", suffix,".png"),width=595, height=545)
 plot(rate)
 print(rate)
-dev.off()
 
 # Show the CATE distribution 
-png(file=paste0(Output, "LM_forest_CATE_", suffix,".png"),width=595, height=545)
-hist(lm.tau.hat, main = "", xlab = "CATE")
-dev.off()
+png(file=paste0(Output, "LM_forest_CATE_", suffix,".png"),width=595, height=368)
+hist(lm.tau.hat, main = "", xlab = "CATE",xlim=c(-0.4,0.4))
 
 ## Create quantile plots ----
 strata <- 10
@@ -341,10 +350,18 @@ ATE.df2 <- ATE.df %>% mutate(CI_max = ATE + 1.96*SE, CI_min = ATE - 1.96*SE)
 ATE.df.fnl <- cbind(ATE.df2,CATE_test)
 
 ## GGplot
-cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +
+
+cali_plot <- ggplot(ATE.df.fnl, aes(tau.mean, ATE)) +        # ggplot2 plot with confidence intervals
   geom_point() + 
   geom_errorbar(aes(ymin = CI_max, ymax = CI_min)) + 
-  theme_light() + labs(x = "Tau hat", y = "ATE", title = "") 
+  theme_light() + labs(x = "Tau Hat", y = "ATE", title = "") + 
+  theme(axis.text.x = element_text(face="plain",
+                                   size=12),
+        axis.text.y = element_text(face="plain", 
+                                   size=12),
+        axis.title=element_text(size=16,face="plain")
+  ) +
+  scale_y_continuous(breaks=seq(-0.02,0.06,0.02))
 
 ggsave(file=paste0(Output,"Calibration_by_quartile_LM_forest_", suffix,".png"), plot = cali_plot, width=8, height=4.94)
 
@@ -443,20 +460,20 @@ lm.tau.hat2 <- lm.tau.hat[!is.na(data.test$gr_inc10_All)]
 # Weekends vs weekdays
 sort(unique(data.test.drfboro$weekend))
 plot_weekend <- HTE_plot(lm.tau.hat,data.test,factor = "weekend", factor_label = c("Weekday", "Weekend"))
-ggsave(file=paste0(Output, "HTE_by_weekend_LM_forest_",suffix,".png"), plot = plot_weekend, width=8, height=4.94)
+ggsave(file=paste0(Output, "HTE_by_weekend_LM_forest_",suffix,".png"), plot = plot_weekend, width=8, height=8)
 
 # Morning vs afternoon
 sort(unique(data.test.drfboro$pickup_time_group))
 plot_TimeofDay <- HTE_plot(lm.tau.hat,data.test,factor = "pickup_time_group", factor_label = c('Morning', 'Afternoon', 'Night'))
-ggsave(file=paste0(Output, "HTE_by_timeofday_LM_forest_",suffix,".png"), plot = plot_TimeofDay, width=8, height=4.94)
+ggsave(file=paste0(Output, "HTE_by_timeofday_LM_forest_",suffix,".png"), plot = plot_TimeofDay, width=8, height=8)
 
 # Income deciles
 sort(unique(data.test.drfboro$gr_inc10_All))
 plot_Income <- HTE_plot(lm.tau.hat2,data.test.noNA,factor = "gr_inc10_All", factor_label = c("1","2","3","4","5","6","7","8","9","10"))
-ggsave(file=paste0(Output, "HTE_by_income_LM_forest_",suffix,".png"), plot = plot_Income, width=8, height=4.94)
+ggsave(file=paste0(Output, "HTE_by_income_LM_forest_",suffix,".png"), plot = plot_Income, width=8, height=8)
 
 # Borough
 sort(unique(data.test.drfboro$drf_boro))
 plot_drfboro <- HTE_plot(lm.tau.hat = lm.tau.hat.drfboro,data.test = data.test.drfboro,factor = "drf_boro", factor_label = c("Brooklyn", "Manhattan", "Queens", "Staten Island", "The Bronx"))
-ggsave(file=paste0(Output, "HTE_by_dropoff_LM_forest_",suffix,".png"), plot = plot_drfboro, width=8, height=4.94)
+ggsave(file=paste0(Output, "HTE_by_dropoff_LM_forest_",suffix,".png"), plot = plot_drfboro, width=8, height=8)
 ```
